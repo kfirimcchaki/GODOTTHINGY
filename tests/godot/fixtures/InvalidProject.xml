@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project>
+	<app title="Invalid Fixture" main="Main" />
+	<haxelib version="1.0.0" />
+</project>

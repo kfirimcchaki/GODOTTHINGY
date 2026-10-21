@@ -1,0 +1,14 @@
+# Python tooling and tests.
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Godot-generated build/import data.
+**/.godot/
+/upstream/godot/.sconsign.dblite
+/upstream/godot/bin/
+
+# Temporary downloaded archives and build logs.
+*.tar.gz
+*.log

@@ -1,0 +1,81 @@
+diff --git a/editor/project_manager/project_dialog.cpp b/editor/project_manager/project_dialog.cpp
+index 7c83dcc0..364208d1 100644
+--- a/editor/project_manager/project_dialog.cpp
++++ b/editor/project_manager/project_dialog.cpp
+@@ -96,6 +96,7 @@ static bool is_zip_file(Ref<DirAccess> p_d, const String &p_path) {
+ }
+ 
+ void ProjectDialog::_validate_path() {
++	psych_project = false;
+ 	_set_message("", MESSAGE_SUCCESS, PROJECT_PATH);
+ 	_set_message("", MESSAGE_SUCCESS, INSTALL_PATH);
+ 
+@@ -111,7 +112,7 @@ void ProjectDialog::_validate_path() {
+ 	InputType target_path_input_type = PROJECT_PATH;
+ 
+ 	if (mode == MODE_IMPORT) {
+-		if (path.get_file().strip_edges() == "project.godot") {
++		if (path.get_file().strip_edges() == "project.godot" || path.get_file().to_lower() == "project.xml") {
+ 			path = path.get_base_dir();
+ 			project_path->set_text(path);
+ 		}
+@@ -177,6 +178,14 @@ void ProjectDialog::_validate_path() {
+ 			install_path_container->hide();
+ 
+ 			_set_message(TTRC("Valid project found at path."), MESSAGE_SUCCESS);
++		} else if (d->dir_exists(path) && (d->file_exists(path.path_join("Project.xml")) || d->file_exists(path.path_join("project.xml")))) {
++			zip_path = "";
++			psych_project = true;
++
++			create_dir->hide();
++			install_path_container->hide();
++
++			_set_message(TTRC("Psych Engine Project.xml found. Import will add a Godot wrapper configuration without changing Haxe source files."), MESSAGE_SUCCESS);
+ 		} else {
+ 			create_dir->hide();
+ 			install_path_container->hide();
+@@ -423,6 +432,8 @@ void ProjectDialog::_browse_project_path() {
+ 		fdialog_project->set_file_mode(EditorFileDialog::FILE_MODE_OPEN_ANY);
+ 		fdialog_project->clear_filters();
+ 		fdialog_project->add_filter("project.godot", vformat("%s %s", GODOT_VERSION_NAME, TTR("Project")));
++		fdialog_project->add_filter("Project.xml", TTR("Psych Engine Project Manifest"));
++		fdialog_project->add_filter("project.xml", TTR("Psych Engine Project Manifest"));
+ 		fdialog_project->add_filter("*.zip", TTR("ZIP File"));
+ 	} else {
+ 		fdialog_project->set_file_mode(EditorFileDialog::FILE_MODE_OPEN_DIR);
+@@ -633,6 +644,23 @@ void ProjectDialog::ok_pressed() {
+ 		}
+ 	}
+ 
++	// A Lime/Haxe project has no project.godot marker. Create a small, reversible
++	// wrapper file so the normal Godot Project Manager can open it. The original
++	// Project.xml, Haxe sources, and assets are never rewritten by this step.
++	if (mode == MODE_IMPORT && psych_project && zip_path.is_empty() && !FileAccess::exists(path.path_join("project.godot"))) {
++		ProjectSettings::CustomMap psych_settings;
++		psych_settings["application/config/name"] = path.get_file();
++		psych_settings["application/config/features"] = ProjectSettings::get_required_features();
++		psych_settings["psych_engine/enabled"] = true;
++		psych_settings["psych_engine/manifest"] = FileAccess::exists(path.path_join("Project.xml")) ? "Project.xml" : "project.xml";
++		Error save_error = ProjectSettings::get_singleton()->save_custom(path.path_join("project.godot"), psych_settings, Vector<String>(), false);
++		if (save_error != OK) {
++			dialog_error->set_text(vformat(TTR("Couldn't create the Psych Engine Godot wrapper configuration (error %d). No Haxe source files were changed."), save_error));
++			dialog_error->popup_centered();
++			return;
++		}
++	}
++
+ 	// Two cases for importing a ZIP.
+ 	switch (mode) {
+ 		case MODE_IMPORT: {
+diff --git a/editor/project_manager/project_dialog.h b/editor/project_manager/project_dialog.h
+index bad5570e..77fa4ac2 100644
+--- a/editor/project_manager/project_dialog.h
++++ b/editor/project_manager/project_dialog.h
+@@ -72,6 +72,7 @@ private:
+ 
+ 	Mode mode = MODE_NEW;
+ 	bool is_folder_empty = true;
++	bool psych_project = false; // A Project.xml import needs a generated Godot wrapper configuration.
+ 	ConfirmationDialog *nonempty_confirmation = nullptr;
+ 
+ 	CheckButton *create_dir = nullptr;

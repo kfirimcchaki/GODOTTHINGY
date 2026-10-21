@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project>
+	<app title="Native Bridge Fixture" file="Fixture" main="Main" version="1.2.3" company="Test" />
+	<classpath name="source" />
+	<assets path="assets" />
+	<define name="LUA_ALLOWED" if="desktop" />
+	<haxelib name="flixel" version="5.6.1" />
+	<section if="officialBuild">
+		<haxelib name="optional-lib" if="windows || linux" />
+	</section>
+</project>

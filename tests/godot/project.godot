@@ -1,0 +1,7 @@
+config_version=5
+
+[application]
+config/name="GODOTTHINGY Native Psych Module Tests"
+
+[rendering]
+renderer/rendering_method="gl_compatibility"

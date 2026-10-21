@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="PsychProjectDescriptor" inherits="RefCounted" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		Reads and validates a Lime/Haxe Psych Engine Project.xml manifest without changing the source project.
+	</brief_description>
+	<description>
+		[PsychProjectDescriptor] extracts application metadata, Haxelib requirements, asset rules, classpaths, defines, and compiler flags from a Psych Engine [code]Project.xml[/code] file. Conditional expressions are preserved as metadata; this class does not evaluate Lime build conditions, install dependencies, execute Haxe, or rewrite the manifest.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="parse_file">
+			<return type="int" enum="@GlobalScope.Error" />
+			<param index="0" name="file_path" type="String" />
+			<description>
+				Parses a [code]Project.xml[/code] file from an absolute path or a [code]res://[/code] path. The XML file is limited to 8 MiB for safety.
+			</description>
+		</method>
+		<method name="get_haxelib_dependencies">
+			<return type="Array[Dictionary]" />
+			<description>Returns the declared [code]&lt;haxelib&gt;[/code] entries, including versions and conditional expressions.</description>
+		</method>
+		<method name="get_asset_rules">
+			<return type="Array[Dictionary]" />
+			<description>Returns the [code]&lt;assets&gt;[/code] rules, including source paths, renames, exclusions, and conditions.</description>
+		</method>
+		<method name="get_class_paths">
+			<return type="Array[Dictionary]" />
+			<description>Returns declared Haxe classpaths. Missing paths are reported in the diagnostics array.</description>
+		</method>
+		<method name="get_defines">
+			<return type="Array[Dictionary]" />
+			<description>Returns Lime [code]&lt;define&gt;[/code] declarations.</description>
+		</method>
+		<method name="get_haxedefs">
+			<return type="Array[Dictionary]" />
+			<description>Returns Haxe compiler [code]&lt;haxedef&gt;[/code] declarations.</description>
+		</method>
+		<method name="get_settings">
+			<return type="Array[Dictionary]" />
+			<description>Returns Lime [code]&lt;set&gt;[/code] declarations.</description>
+		</method>
+		<method name="get_diagnostics">
+			<return type="Array[Dictionary]" />
+			<description>Returns validation messages with severity, message, and optional path fields.</description>
+		</method>
+		<method name="get_summary">
+			<return type="Dictionary" />
+			<description>Returns the parsed application metadata and record counts.</description>
+		</method>
+	</methods>
+</class>

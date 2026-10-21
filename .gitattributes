@@ -1,0 +1,2 @@
+# Patch files intentionally contain upstream source context with leading tabs/spaces.
+integration/patches/*.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab

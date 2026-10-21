@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="PsychConductor" inherits="Node" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		A high-precision step, beat, measure, and section clock with piecewise tempo changes.
+	</brief_description>
+	<description>
+		[PsychConductor] maintains a double-precision song clock, a sorted BPM map, and step-based callbacks. It can be driven by Godot frame time or synchronized to an external audio position. Tempo changes are specified in absolute milliseconds; their beat and step positions are recalculated when the map changes.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="set_tempo_change">
+			<return type="bool" />
+			<param index="0" name="position_ms" type="float" />
+			<param index="1" name="bpm" type="float" />
+			<description>Adds or replaces a tempo change. Returns [code]false[/code] for a negative time or a non-positive/non-finite BPM.</description>
+		</method>
+		<method name="set_tempo_map">
+			<return type="bool" />
+			<param index="0" name="tempo_map" type="Array[Dictionary]" />
+			<description>Atomically replaces the tempo map. Each dictionary must contain [code]position_ms[/code] (or [code]time_ms[/code]) and [code]bpm[/code].</description>
+		</method>
+		<method name="seek">
+			<return type="void" />
+			<param index="0" name="position_ms" type="float" />
+			<param index="1" name="emit_current_step" type="bool" default="false" />
+			<description>Moves the song clock. Optionally emits timing signals for the step at the destination.</description>
+		</method>
+		<method name="synchronize_to_audio_position_ms">
+			<return type="void" />
+			<param index="0" name="audio_position_ms" type="float" />
+			<description>Applies a small proportional correction for low drift and a hard resynchronization for drift beyond [member max_audio_drift_ms].</description>
+		</method>
+		<method name="start"><return type="void" /><description>Starts advancing the clock and emits the current unreported step.</description></method>
+		<method name="stop"><return type="void" /><description>Stops advancing the clock.</description></method>
+		<method name="reset"><return type="void" /><description>Moves the clock to zero and resets the emitted-step cursor.</description></method>
+		<method name="get_step_at">
+			<return type="float" />
+			<param index="0" name="position_ms" type="float" />
+			<description>Converts an absolute time in milliseconds to a fractional step using the active BPM segment.</description>
+		</method>
+		<method name="get_step_start_time_ms">
+			<return type="float" />
+			<param index="0" name="step" type="float" />
+			<description>Converts a fractional step to its absolute time in milliseconds.</description>
+		</method>
+	</methods>
+	<members>
+		<member name="bpm" type="float" setter="set_bpm" getter="get_bpm" default="100.0">The BPM at song time zero.</member>
+		<member name="song_position_ms" type="float" setter="set_song_position_ms" getter="get_song_position_ms" default="0.0">The current song position in milliseconds.</member>
+		<member name="playback_rate" type="float" setter="set_playback_rate" getter="get_playback_rate" default="1.0">Clock multiplier. A value of zero pauses the clock.</member>
+		<member name="max_audio_drift_ms" type="float" setter="set_max_audio_drift_ms" getter="get_max_audio_drift_ms" default="25.0">Drift threshold above which audio synchronization performs a hard seek.</member>
+		<member name="steps_per_section" type="int" setter="set_steps_per_section" getter="get_steps_per_section" default="16">Number of steps between [signal section_hit] events.</member>
+	</members>
+	<signals>
+		<signal name="step_hit"><param index="0" name="step_index" type="int" /><description>Emitted for every newly crossed step, starting at step zero.</description></signal>
+		<signal name="beat_hit"><param index="0" name="beat_index" type="int" /><description>Emitted at every fourth step.</description></signal>
+		<signal name="measure_hit"><param index="0" name="measure_index" type="int" /><description>Emitted at every sixteenth step.</description></signal>
+		<signal name="section_hit"><param index="0" name="section_index" type="int" /><description>Emitted at the configured section boundary.</description></signal>
+		<signal name="tempo_map_changed"><description>Emitted after the tempo map changes.</description></signal>
+		<signal name="audio_resynchronized"><param index="0" name="drift_ms" type="float" /><description>Emitted after a hard correction to the audio clock.</description></signal>
+	</signals>
+</class>
