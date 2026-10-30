@@ -12,7 +12,7 @@ const num = (value, fallback) => {
 };
 
 const mode = (process.env.AUTH_MODE || 'auto').toLowerCase();
-const hasConnect = Boolean(process.env.CONNECT_CLIENT_ID && process.env.CONNECT_CLIENT_SECRET);
+const hasConnect = Boolean(process.env.CONNECT_CLIENT_ID);
 
 const authMode = mode === 'mock' ? 'mock' : mode === 'connect' ? 'connect' : hasConnect ? 'connect' : 'mock';
 
@@ -34,12 +34,15 @@ export const config = {
 
   auth: {
     mode: authMode,
-    clientId: process.env.CONNECT_CLIENT_ID || 'nt-scripting-mock',
-    clientSecret: process.env.CONNECT_CLIENT_SECRET || 'nt-scripting-mock-secret',
-    authorizeUrl: process.env.CONNECT_AUTHORIZE_URL || '/dev/connect/authorize',
-    tokenUrl: process.env.CONNECT_TOKEN_URL || '/dev/connect/token',
-    userinfoUrl: process.env.CONNECT_USERINFO_URL || '/dev/connect/userinfo',
-    scope: process.env.CONNECT_SCOPE || 'identify',
+    // The live site authenticates as client_id=9 against connect.nulls.gg.
+    clientId: process.env.CONNECT_CLIENT_ID || '9',
+    authorizeUrl: process.env.CONNECT_AUTHORIZE_URL || 'https://connect.nulls.gg/authorize',
+    jwksUrl: process.env.CONNECT_JWKS_URL || 'https://connect.nulls.gg/.well-known/jwks.json',
+    issuer: process.env.CONNECT_ISSUER || 'https://connect.nulls.gg',
+    audience: process.env.CONNECT_AUDIENCE || process.env.CONNECT_CLIENT_ID || '9',
+    // OIDC implicit flow — the credential comes back as an id_token fragment.
+    responseType: process.env.CONNECT_RESPONSE_TYPE || 'id_token',
+    scope: process.env.CONNECT_SCOPE || 'openid email',
     redirectUri: process.env.CONNECT_REDIRECT_URI || '',
   },
 

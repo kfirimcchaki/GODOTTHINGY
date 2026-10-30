@@ -9,13 +9,29 @@ observed, so their shapes are designed for consistency with the verified ones.
 
 ## Authentication
 
-Sign-in is OAuth 2.0 authorization code via Null's Connect.
+Sign-in is **OIDC implicit flow** via Null's Connect. The live authorize URL is:
 
 ```
-GET  /connect?return_to=/library   begin the flow (302 to the provider)
-GET  /connect/callback             provider redirect target; sets the session cookie
-POST /logout                       clear the session
+https://connect.nulls.gg/authorize?scope=openid+email
+  &response_type=id_token
+  &redirect_uri=<site>/connect?return_to=<path>
+  &client_id=9#sign_up
 ```
+
+Because `response_type=id_token` delivers the credential in the URL **fragment**,
+and browsers never send fragments to a server, the exchange is client-driven:
+
+| Method | Path | Description |
+| --- | --- | --- |
+| GET | `/connect` | Serves the SPA shell. With no `#id_token` fragment the client redirects to the provider; with one it posts the token below, then honours `return_to` |
+| POST | `/api/auth/session` | Body `{id_token}`. Verifies the JWT (RS256 via JWKS, or HS256 in mock mode), upserts the user, sets the session cookie |
+| POST | `/logout` | Clears the session |
+
+The redirect target is `/connect` itself — there is no separate callback path.
+
+`id_token` verification checks `alg`, signature, `exp`, `iat`, `iss` and `aud`.
+Rejections return `401 {"error":"Invalid id_token"}`; a missing token returns
+`400 {"error":"Missing id_token"}`.
 
 Sessions are opaque tokens in an `HttpOnly`, `SameSite=Lax` cookie.
 Authenticated routes answer `401 {"error":"Unauthorized"}` without one.
@@ -120,10 +136,23 @@ lift the gate.
 
 ### Pages
 
+Client-side routes, matching the live site:
+
 | Path | Description |
 | --- | --- |
+| `/` | Landing — heading and sign-in button; your scripts once signed in |
+| `/scripts` | Script listing with search |
+| `/scripts/:id` | Script page — **Start friendly battle**, release history |
+| `/scripts/:id/edit` | Editor |
+| `/settings` | Sign-in methods |
+| `/connect` | OAuth (see Authentication) |
 | `/s/:token` | Friendly-battle launch page for a share token |
 | any other unmatched path | The SPA shell, which renders its own 404 |
+
+Every unmatched path — `/robots.txt` included — returns `200 text/html` with
+the shell, and the client router draws the 404. This matches the live service.
+`/scripts/new` matches the `:id` route, fails UUID validation, and renders an
+inline "Page not found" above the action bar, as upstream does.
 
 ## Errors
 

@@ -49,30 +49,37 @@ async function req(url, { jar: j, method = 'GET', body, headers = {}, raw } = {}
 
 const json = async (response) => (response.status === 204 ? null : response.json());
 
-/** Walk /connect → dev provider → /connect/callback and return the cookie jar. */
+/** Walk the OIDC implicit flow against the bundled dev provider. */
 async function signIn(account = 'beta') {
   const j = jar();
-  const step1 = await req('/connect?return_to=/', { jar: j });
-  assert.equal(step1.status, 302);
 
-  const authorize = new URL(step1.headers.get('location'), base);
-  const params = authorize.searchParams;
+  // The SPA builds this URL; the provider answers with an id_token fragment.
+  const authorize = await req(
+    `/dev/connect/authorize?${new URLSearchParams({
+      scope: 'openid email',
+      response_type: 'id_token',
+      redirect_uri: '/connect?return_to=%2F',
+      client_id: '9',
+    })}`,
+  );
+  assert.equal(authorize.status, 200);
 
-  const step2 = await req('/dev/connect/authorize', {
+  const granted = await req('/dev/connect/authorize', {
     jar: j,
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     raw: true,
-    body: new URLSearchParams({
-      state: params.get('state'),
-      redirect_uri: params.get('redirect_uri'),
-      account,
-    }).toString(),
+    body: new URLSearchParams({ redirect_uri: '/connect?return_to=%2F', account }).toString(),
   });
-  assert.equal(step2.status, 302);
+  assert.equal(granted.status, 302);
 
-  const step3 = await req(step2.headers.get('location'), { jar: j });
-  assert.equal(step3.status, 302, 'callback should redirect to return_to');
+  const location = granted.headers.get('location');
+  assert.ok(location.startsWith('/connect'), 'provider must redirect back to /connect');
+  const idToken = new URLSearchParams(location.split('#')[1]).get('id_token');
+  assert.ok(idToken, 'id_token must arrive in the fragment');
+
+  const session = await req('/api/auth/session', { jar: j, method: 'POST', body: { id_token: idToken } });
+  assert.equal(session.status, 200);
   return j;
 }
 
@@ -210,10 +217,35 @@ test('OAuth round trip establishes a session', async () => {
   assert.equal(body.is_beta, true);
 });
 
-test('POST /connect/callback rejects a forged state', async () => {
-  const response = await req('/connect/callback?code=whatever&state=nope');
+test('POST /api/auth/session rejects a forged id_token', async () => {
+  const response = await req('/api/auth/session', { method: 'POST', body: { id_token: 'not.a.jwt' } });
+  assert.equal(response.status, 401);
+  assert.deepEqual(await json(response), { error: 'Invalid id_token' });
+});
+
+test('POST /api/auth/session requires an id_token', async () => {
+  const response = await req('/api/auth/session', { method: 'POST', body: {} });
   assert.equal(response.status, 400);
-  assert.match((await json(response)).error, /state/i);
+  assert.deepEqual(await json(response), { error: 'Missing id_token' });
+});
+
+test('a tampered id_token signature is rejected', async () => {
+  const j = await signIn('guest');
+  // Re-mint a guest token, then flip a character in the signature.
+  const { mockIdToken } = await import('../server/auth.js');
+  const token = mockIdToken('guest');
+  const [h, p, s] = token.split('.');
+  const tampered = `${h}.${p}.${s[0] === 'A' ? 'B' : 'A'}${s.slice(1)}`;
+
+  const response = await req('/api/auth/session', { jar: j, method: 'POST', body: { id_token: tampered } });
+  assert.equal(response.status, 401);
+});
+
+test('GET /connect serves the SPA shell so the client can read the fragment', async () => {
+  const response = await req('/connect?return_to=%2F');
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type'), /text\/html/);
+  assert.ok((await response.text()).includes('NT Scripting'));
 });
 
 /* ------------------------------------------------------------------ */

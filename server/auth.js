@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import config from './config.js';
 import db, { persist } from './db.js';
 import { sessionToken } from './ids.js';
+import { signHs256, verifyHs256, verifyRs256 } from './jwt.js';
 
 /* ------------------------------------------------------------------ *
  * Sessions — opaque tokens in an HttpOnly cookie.
@@ -62,76 +63,80 @@ export function sessionCookie(token, { maxAge } = {}) {
 }
 
 /* ------------------------------------------------------------------ *
- * OAuth — "Null's Connect"
+ * OAuth — "Null's Connect", OIDC implicit flow
  *
- * In `mock` mode the whole provider is served locally under /dev/connect so
- * the login flow is end-to-end testable without third-party credentials.
+ * The live site redirects to
+ *   https://connect.nulls.gg/authorize?scope=openid+email
+ *     &response_type=id_token&redirect_uri=<site>/connect?return_to=<path>
+ *     &client_id=9#sign_up
+ * and receives a signed id_token in the URL fragment. Because fragments are
+ * never sent to a server, /connect is handled client-side: the SPA posts the
+ * id_token to POST /api/auth/session, which verifies it here.
+ *
+ * In `mock` mode the bundled dev provider mints an HS256 id_token so the
+ * round trip works locally without third-party credentials.
  * ------------------------------------------------------------------ */
 
 export function redirectUri(req) {
   if (config.auth.redirectUri) return config.auth.redirectUri;
   const base = config.publicUrl || `${req.protocol}://${req.get('host')}`;
-  return `${base}/connect/callback`;
+  return `${base}/connect`;
 }
 
-export function authorizeUrl(req, stateParam) {
+/** Absolute authorize URL, matching the live parameter set and ordering. */
+export function authorizeUrl(req, returnTo) {
+  const base = config.publicUrl || `${req.protocol}://${req.get('host')}`;
+  const callback = config.auth.redirectUri || `${base}/connect?return_to=${encodeURIComponent(returnTo || '/')}`;
   const params = new URLSearchParams({
-    client_id: config.auth.clientId,
-    redirect_uri: redirectUri(req),
-    response_type: 'code',
     scope: config.auth.scope,
-    state: stateParam,
+    response_type: config.auth.responseType,
+    redirect_uri: callback,
+    client_id: config.auth.clientId,
   });
   if (config.auth.mode === 'mock') {
     return `/dev/connect/authorize?${params}`;
   }
-  return `${config.auth.authorizeUrl}?${params}`;
+  // The provider appends its own `#sign_up` fragment to open on the sign-up tab.
+  return `${config.auth.authorizeUrl}?${params}#sign_up`;
 }
 
-/** Exchange an authorization code for a profile. Returns a user record. */
-export async function exchangeCode(req, code) {
-  if (config.auth.mode === 'mock') return mockProfile(code);
-
-  const tokenResponse = await fetch(config.auth.tokenUrl, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      code,
-      client_id: config.auth.clientId,
-      client_secret: config.auth.clientSecret,
-      redirect_uri: redirectUri(req),
-    }),
-  });
-  if (!tokenResponse.ok) {
-    throw new Error(`token exchange failed: HTTP ${tokenResponse.status}`);
+/** Verify an id_token and return a normalised profile. */
+export async function verifyIdToken(idToken) {
+  if (config.auth.mode === 'mock') {
+    const payload = verifyHs256(idToken, config.session.secret);
+    return profileFromClaims(payload);
   }
-  const tokens = await tokenResponse.json();
-
-  const userResponse = await fetch(config.auth.userinfoUrl, {
-    headers: { authorization: `Bearer ${tokens.access_token}`, accept: 'application/json' },
+  const payload = await verifyRs256(idToken, {
+    jwksUrl: config.auth.jwksUrl,
+    issuer: config.auth.issuer,
+    audience: config.auth.audience,
   });
-  if (!userResponse.ok) {
-    throw new Error(`userinfo failed: HTTP ${userResponse.status}`);
-  }
-  const profile = await userResponse.json();
-  return normaliseProfile(profile);
+  return profileFromClaims(payload);
 }
 
-function normaliseProfile(profile) {
-  const name = profile.name || profile.username || profile.login || 'Player';
-  const username = (profile.username || profile.login || name).toString().toLowerCase().replace(/\s+/g, '');
+function profileFromClaims(claims) {
+  const name = claims.name || claims.nickname || claims.preferred_username || claims.email || 'Player';
+  const username = (claims.preferred_username || claims.nickname || claims.email || name)
+    .toString()
+    .split('@')[0]
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]/g, '');
   return {
-    user_id: profile.id || profile.user_id || profile.uuid || uuidFrom(name),
+    user_id: claims.sub || uuidFrom(String(name)),
     name: String(name),
     username,
-    avatar_url: profile.avatar_url || profile.avatar || null,
-    is_beta: Boolean(profile.is_beta ?? profile.beta ?? false),
+    email: claims.email ?? null,
+    avatar_url: claims.picture ?? null,
+    is_beta: Boolean(claims.is_beta ?? claims.beta ?? false),
   };
 }
 
 function uuidFrom(seed) {
-  return crypto.createHash('sha1').update(seed).digest('hex').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12}).*$/, '$1-$2-$3-$4-$5');
+  return crypto
+    .createHash('sha1')
+    .update(seed)
+    .digest('hex')
+    .replace(/^(.{8})(.{4})(.{4})(.{4})(.{12}).*$/, '$1-$2-$3-$4-$5');
 }
 
 /* ------------------------------------------------------------------ *
@@ -139,20 +144,27 @@ function uuidFrom(seed) {
  * ------------------------------------------------------------------ */
 
 const MOCK_PROFILES = {
-  beta: { name: 'Beta Tester', username: 'betatester', is_beta: true },
-  guest: { name: 'Guest Player', username: 'guestplayer', is_beta: false },
+  beta: { name: 'Beta Tester', username: 'betatester', email: 'beta@example.test', is_beta: true },
+  guest: { name: 'Guest Player', username: 'guestplayer', email: 'guest@example.test', is_beta: false },
 };
 
-export function mockProfile(code) {
-  const key = code.startsWith('beta') ? 'beta' : code.startsWith('guest') ? 'guest' : 'beta';
-  const profile = MOCK_PROFILES[key];
-  return {
-    user_id: uuidFrom(`mock:${profile.username}`),
-    name: profile.name,
-    username: profile.username,
-    avatar_url: null,
-    is_beta: profile.is_beta,
-  };
+export function mockIdToken(account) {
+  const profile = MOCK_PROFILES[account] || MOCK_PROFILES.beta;
+  const now = Math.floor(Date.now() / 1000);
+  return signHs256(
+    {
+      iss: 'https://connect.nulls.gg',
+      aud: config.auth.clientId,
+      sub: uuidFrom(`mock:${profile.username}`),
+      iat: now,
+      exp: now + 3600,
+      name: profile.name,
+      preferred_username: profile.username,
+      email: profile.email,
+      is_beta: profile.is_beta,
+    },
+    config.session.secret,
+  );
 }
 
 /* ------------------------------------------------------------------ *

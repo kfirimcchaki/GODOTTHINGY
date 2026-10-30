@@ -472,14 +472,61 @@ paths:
                   scripts: { type: array, items: { $ref: "#/components/schemas/Script" } }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /api/auth/session:
+    post:
+      tags: [auth]
+      summary: Exchange an id_token for a session
+      description: |
+        OIDC implicit flow. The id_token arrives in the URL fragment, which
+        browsers never send to a server, so the SPA posts it here. Verified
+        with RS256 against the provider's JWKS (HS256 in mock mode).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_token]
+              properties:
+                id_token: { type: string, description: Signed JWT }
+      responses:
+        "200":
+          description: Session established; cookie set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user_id: { type: string, format: uuid }
+                  name: { type: string }
+                  username: { type: string }
+                  avatar_url: { type: string, nullable: true }
+                  is_beta: { type: boolean }
+        "400":
+          description: Missing id_token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: Missing id_token }
+        "401":
+          description: Token failed verification
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: Invalid id_token }
+
   /connect:
     get:
       tags: [auth]
-      summary: Begin OAuth sign-in
+      summary: OAuth launch point and redirect target
+      description: |
+        Serves the SPA shell. The client either redirects to the provider
+        (no fragment) or posts the fragment's id_token to
+        `/api/auth/session` and then honours `return_to`.
       parameters:
         - { name: return_to, in: query, schema: { type: string, default: / } }
       responses:
-        "302": { description: Redirect to the identity provider }
+        "200": { description: The SPA shell }
 
   /logout:
     post:

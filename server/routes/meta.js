@@ -57,7 +57,7 @@ router.get('/releases', (req, res) => {
 });
 
 /** GET /api/meta — capabilities the frontend renders from. */
-router.get('/meta', (_req, res) => {
+router.get('/meta', (req, res) => {
   res.json({
     site_name: config.siteName,
     auth_mode: config.auth.mode,
@@ -65,6 +65,14 @@ router.get('/meta', (_req, res) => {
     beta_required: config.limits.betaRequired,
     max_code_bytes: config.limits.maxCodeBytes,
     max_events_per_second: config.limits.maxEventsPerSecond,
+    oauth: {
+      authorize_url: config.auth.mode === 'mock' ? '/dev/connect/authorize' : config.auth.authorizeUrl,
+      client_id: config.auth.clientId,
+      response_type: config.auth.responseType,
+      scope: config.auth.scope,
+      // The provider appends #sign_up; the mock provider does not.
+      fragment: config.auth.mode === 'mock' ? '' : '#sign_up',
+    },
     stats: {
       scripts: db.scripts.filter((s) => s.published_at !== null).length,
       releases: db.releases.length,
