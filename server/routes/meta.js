@@ -2,7 +2,7 @@ import { Router } from 'express';
 import config from '../config.js';
 import db from '../db.js';
 import { requireUser } from '../auth.js';
-import { serialiseScript } from './scripts.js';
+import { serialiseScriptListItem } from './scripts.js';
 
 const router = Router();
 
@@ -31,7 +31,7 @@ router.get('/me', requireUser, (req, res) => {
 router.get('/favorites', requireUser, (req, res) => {
   const ids = new Set(db.favorites.filter((f) => f.user_id === req.user.user_id).map((f) => f.script_id));
   const scripts = db.scripts.filter((s) => ids.has(s.script_id));
-  res.json({ scripts: scripts.map((s) => serialiseScript(s, req.user)) });
+  res.json({ scripts: scripts.map((s) => serialiseScriptListItem(s, req.user)) });
 });
 
 /** GET /api/releases — the global release feed. */

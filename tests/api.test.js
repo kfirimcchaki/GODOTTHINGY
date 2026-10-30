@@ -276,11 +276,12 @@ test('author can create, save, publish and read a script', async () => {
   // Release ids continue from the seeded counter.
   assert.ok(saved.release.id > 16126, `expected id > 16126, got ${saved.release.id}`);
 
-  // Publishing binds a user map.
+  // Publishing only stamps published_at. The live catalogue has many
+  // published scripts with user_map_id = null, so the map is not bound here.
   const published = await json(await req(`/api/scripts/${script.script_id}/publish`, { jar: j, method: 'POST' }));
   assert.ok(published.published_at);
-  assert.match(published.user_map_id, /^[0-9a-f-]{36}$/);
-  assert.match(published.user_map_internal_id, /^[0-9A-Z]{9}:[0-9A-Z]{9}$/);
+  assert.equal(published.user_map_id, null);
+  assert.equal(published.user_map_internal_id, null);
 
   // Owners see source on the detail route; strangers do not.
   const asOwner = await json(await req(`/api/scripts/${script.script_id}`, { jar: j }));
@@ -364,6 +365,11 @@ test('a beta owner can create a launch link', async () => {
   assert.equal(body.script_id, script.script_id);
   assert.match(body.launch_url, /^nullsbrawl:\/\/scripting\/play\?token=/);
   assert.match(body.share_url, /\/s\/[\w-]+$/);
+
+  // Sharing is what binds the user map.
+  const afterShare = await json(await req(`/api/scripts/${script.script_id}`, { jar: owner }));
+  assert.match(afterShare.user_map_id, /^[0-9a-f-]{36}$/);
+  assert.match(afterShare.user_map_internal_id, /^[0-9A-Z]{9}:[0-9A-Z]{9}$/);
 
   // The share page resolves.
   const token = body.share_url.split('/s/')[1];

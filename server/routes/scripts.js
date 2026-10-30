@@ -12,12 +12,35 @@ const MAX_DESCRIPTION = 2048;
 
 /* ------------------------------------------------------------------ *
  * Serialisation — must match the live payloads exactly.
+ *
+ * The service uses two different shapes:
+ *   - detail (GET /api/scripts/:id)  -> 11 fields, including user_map_*
+ *   - list item (any collection)     ->  9 fields, user_map_* omitted
  * ------------------------------------------------------------------ */
 
-export function serialiseScript(script, viewer) {
-  const favorite = Boolean(
+function isFavorite(script, viewer) {
+  return Boolean(
     viewer && db.favorites.some((f) => f.user_id === viewer.user_id && f.script_id === script.script_id),
   );
+}
+
+/** Collection shape — no user_map fields. */
+export function serialiseScriptListItem(script, viewer) {
+  return {
+    script_id: script.script_id,
+    name: script.name,
+    description: script.description ?? null,
+    created_at: script.created_at,
+    updated_at: script.updated_at,
+    published_at: script.published_at ?? null,
+    author_uuid: script.author_uuid,
+    author_name: script.author_name,
+    is_favorite: isFavorite(script, viewer),
+  };
+}
+
+/** Detail shape — adds the user map binding. */
+export function serialiseScript(script, viewer) {
   return {
     script_id: script.script_id,
     name: script.name,
@@ -29,7 +52,7 @@ export function serialiseScript(script, viewer) {
     published_at: script.published_at ?? null,
     author_uuid: script.author_uuid,
     author_name: script.author_name,
-    is_favorite: favorite,
+    is_favorite: isFavorite(script, viewer),
   };
 }
 
@@ -91,7 +114,7 @@ router.get('/', (req, res) => {
   const total = items.length;
   const page = items.slice(offset, offset + limit);
   res.json({
-    scripts: page.map((s) => serialiseScript(s, req.user)),
+    scripts: page.map((s) => serialiseScriptListItem(s, req.user)),
     total,
     limit,
     offset,
@@ -253,13 +276,11 @@ router.post('/:scriptId/publish', requireUser, (req, res) => {
   const script = findScript(req.params.scriptId);
   if (!script || !isOwner(script, req.user)) return res.status(404).json({ error: 'Script not found' });
 
+  // Publishing only sets the timestamp. The live catalogue has plenty of
+  // published scripts whose user_map_id is still null, so the map is bound
+  // later — on the first share, when a battle is actually launched.
   script.published_at = script.published_at || nowMicro();
   script.updated_at = nowMicro();
-  // Publishing binds the script to a user map, mirroring the live payload.
-  if (!script.user_map_id) {
-    script.user_map_id = uuidv7();
-    script.user_map_internal_id = internalMapId();
-  }
   save();
   return res.json(serialiseScript(script, req.user));
 });
@@ -289,6 +310,13 @@ router.post('/:scriptId/share', requireUser, requireBeta, (req, res) => {
   const release = releases.at(-1);
   const base = config.publicUrl || `${req.protocol}://${req.get('host')}`;
   const token = shareToken();
+
+  // Launching a battle is what binds the script to a user map: scripts that
+  // have never been shared keep user_map_id = null even when published.
+  if (!script.user_map_id) {
+    script.user_map_id = uuidv7();
+    script.user_map_internal_id = internalMapId();
+  }
 
   db.shareLinks.push({
     token,
