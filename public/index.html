@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NT Scripting</title>
+    <meta name="description" content="Create, share and run custom Lua scripts in friendly battles." />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <a class="brand" href="/" data-link>
+          <span class="brand-mark">NT</span>
+          <span class="brand-name">Scripting</span>
+        </a>
+        <nav class="nav" id="nav"></nav>
+        <div class="topbar-right" id="session"></div>
+      </header>
+      <main id="view" class="view" aria-live="polite"></main>
+      <footer class="footer">
+        <span id="footer-stats"></span>
+        <span class="dot">·</span>
+        <a href="/docs" data-link>API docs</a>
+      </footer>
+    </div>
+    <div id="toast-host" class="toast-host"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
